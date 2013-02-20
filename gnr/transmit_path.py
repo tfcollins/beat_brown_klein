@@ -34,7 +34,7 @@ class transmit_path(gr.hier_block2):
         self.packet_transmitter = \
             digital.mod_pkts(self.modulator,
                              access_code=None,
-                             msgq_limit=4,
+                             msgq_limit=5000,
                              pad_for_usrp=True)
 
         self.amp = gr.multiply_const_cc(1)
@@ -63,6 +63,9 @@ class transmit_path(gr.hier_block2):
         
     def bitrate(self):
         return self._bitrate
+
+    def get_send_queue_size(self):
+        return self.packet_transmittter._pkt_input.size()
 
     def samples_per_symbol(self):
         return self.modulator._samples_per_symbol

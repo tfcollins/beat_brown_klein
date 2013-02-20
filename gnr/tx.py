@@ -54,6 +54,9 @@ class my_top_block(gr.top_block):
     def send_pkt(self, payload='', eof=False):
         return self.txpath.send_pkt(payload, eof)
 
+    def get_send_queue_size(self):
+        return self.txpath.get_send_queue_size()
+ 
     def carrier_sensed(self):
         """
         Return True if the receive path thinks there's carrier
@@ -79,6 +82,18 @@ class my_top_block(gr.top_block):
 
         self.sink.set_freq(target_freq)
         self.source.set_freq(target_freq)
+        
+    def set_freq_R(self, target_freq):#Receiver
+        """
+        Set the center frequency we're interested in.
+        """
+        self.source.set_freq(target_freq)
+
+    def get_center_freq(self):#Transmitter
+        """
+        Get the center frequency we're interested in.
+        """
+	return self.sink.get_center_freq()
         
 
 # ////////////////////////////////////////////////////////////////////
@@ -113,30 +128,35 @@ class cs_mac(object):
         #if ok:
         #    os.write(self.tun_fd, payload)
 
-    def yamato_cannon(period):
-	'Fire some data'
 	
-	#send dataz
+
 
 	#####################################
 	# MAIN MAC LOOP, where all the magic happens
 	#####################################
 
 
-    def main_loop(self):
+    def main_loop(self, rx_freq):
         """
         Main loop for MAC.
 
         """
         min_delay = 1               # seconds
-
-        while 1:
+	main = rx_freq
+	
+	print '##############################'
+	print 'Starting Control Mechanism'
+	print '##############################'
+        
+	while 1:
             delay = min_delay
             #channel = self.tb.carrier_sensed()
             #power = self.tb.spectrum_power()
 	    #print "Channel selected %d: " % channel
 	    #print "Spectrum Power: %d dB" % power
 	    
+	    # Set Receiver Freq
+	    self.tb.set_freq_R(main)
 
 	    # Channel Analysis
 	    fft_data = self.tb.fft_sample()
@@ -144,27 +164,37 @@ class cs_mac(object):
 	    channel1=abs(channel1)
 	    channel2=sum(fft_data[512:1024])
 	    channel2=abs(channel2)
+	    
 	    print "Channel 1 Energy: %.4f | Channel 2 Energy %.4f" % (channel1, channel2)
 		
-	    # Start Transmitting for certain period of time
-	    #print "Ima firing my lazer!!!"
-
 	    # Set Channel Carrier Frequency
-	    main = 2.4e9 # PLEASE SET EVERYTIME
+	    offset = 1.75e6
 	    if channel1>channel2:
-		channel=main+0.75e6 # Middle of upper band
+		channel=main+offset # Middle of upper band
 	    else:
-		channel=main-0.75e6 # Middle of lower band
+		channel=main-offset # Middle of lower band
 	    print "Changing Carrier to: %d Hz" % channel
 	    self.tb.set_freq(channel)
-
-	    #yamato_cannon(period,channel)
-
-	   
+	    print "New Carrier Frequency: %d Hz" % self.tb.get_center_freq()
 
 
+	    # Start Transmitting for certain period of time
+	    print "Ima firin my lazer!!!"
+
+	    # Start Timer
+	    start = time.time()
+	    packet = 'lawlz'
+	    period = 10 # seconds
+	    pkt_num = 0
+	    while (time.time() - start) < period:
+		pkt_num+=1
+		self.tb.send_pkt(packet)	
+
+	    print "Packet(s) Sent: %d" % pkt_num 
+	    print "Current queue size:", self.tb.get_queue_size()
 	    print "Waiting %d second(s) before sensing again" % delay
-            time.sleep(delay)
+           
+	    time.sleep(delay)
 
 
 
@@ -243,7 +273,7 @@ def main():
 
     tb.start()    # Start executing the flow graph (runs in separate threads)
 
-    mac.main_loop()    # don't expect this to return...
+    mac.main_loop(options.tx_freq)    # don't expect this to return...
 
     tb.stop()     # but if it does, tell flow graph to stop.
     tb.wait()     # wait for it to finish

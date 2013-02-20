@@ -48,7 +48,7 @@ class uhd_interface:
         if(istx):
             self.u = uhd.usrp_sink(device_addr=args, stream_args=uhd.stream_args('fc32'))
         else:
-            self.u = uhd.usrp_source(device_addr=args, stream_args=uhd.stream_args('fc32'))
+	    self.u = uhd.usrp_source(device_addr=args, stream_args=uhd.stream_args('fc32'))
 
         # Set the subdevice spec
         if(spec):
@@ -120,6 +120,12 @@ class uhd_interface:
             sys.stderr.write(("\nRequested frequency (%f) out or range [%f, %f]\n") % \
                                  (freq, frange.start(), frange.stop()))
             sys.exit(1)
+
+    def get_center_freq(self):
+	"Get center freq"
+	return self.u.get_center_freq()
+
+
 
 #-------------------------------------------------------------------#
 #   TRANSMITTER
