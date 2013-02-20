@@ -3,6 +3,8 @@
 from gnuradio import gr, gru
 from gnuradio import eng_notation
 from gnuradio import digital
+from gnuradio import fft
+from gnuradio import window
 
 import copy
 import sys
@@ -70,12 +72,22 @@ class receive_path(gr.hier_block2):
         if self._verbose:
             self._print_verbage()
 
+
+	# More Carrier Sensing with FFT
+	self.gr_vector_sink = gr.vector_sink_c(1024)
+	self.gr_stream_to_vector = gr.stream_to_vector(gr.sizeof_gr_complex*1, 1024)
+	self.gr_head = gr.head(gr.sizeof_gr_complex*1024, 1024)
+	self.fft = fft.fft_vcc(1024, True, (window.blackmanharris(1024)), True, 1)
+
 	######################################################
 	# Connect Blocks Together
 	######################################################
 	#channel-filter-->Probe_Avg_Mag_Sqrd
 	#	       -->Packet_Receiver (Demod Done Here!!)
 	#
+
+	# connect FFT sampler to system
+	self.connect(self, self.gr_stream_to_vector, self.fft, self.gr_vector_sink)
 
 	# connect block input to channel filter
 	self.connect(self, self.channel_filter)
@@ -129,7 +141,14 @@ class receive_path(gr.hier_block2):
         """
         self.probe.set_threshold(threshold_in_db)
     
-        
+    def fft_sample(self):
+        """
+	Return FFT vector
+        """
+        data = self.gr_vector_sink.data()       
+	self.gr_vector_sink.clear()
+	return data 
+
     def add_options(normal, expert):
         """
         Adds receiver-specific options to the Options Parser

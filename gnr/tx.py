@@ -66,6 +66,12 @@ class my_top_block(gr.top_block):
         """
         return self.rxpath.spectrum_power()
 
+    def fft_sample(self):
+        """
+        Return True if the receive path thinks there's carrier
+        """
+        return self.rxpath.fft_sample()
+
     def set_freq(self, target_freq):
         """
         Set the center frequency we're interested in.
@@ -107,9 +113,15 @@ class cs_mac(object):
         #if ok:
         #    os.write(self.tun_fd, payload)
 
+    def yamato_cannon(period):
+	'Fire some data'
+	
+	#send dataz
+
 	#####################################
 	# MAIN MAC LOOP, where all the magic happens
 	#####################################
+
 
     def main_loop(self):
         """
@@ -120,14 +132,26 @@ class cs_mac(object):
 
         while 1:
             delay = min_delay
-            channel = self.tb.carrier_sensed()
-	    #print "Channel selected %d: " % channel
+            #channel = self.tb.carrier_sensed()
             power = self.tb.spectrum_power()
+	    #print "Channel selected %d: " % channel
 	    print "Spectrum Power: %d dB" % power
-	    print "Waiting %d seconds before sensing again" % delay
+	    
+	    # Start Transmitting for certain period of time
+	    #print "Ima firing my lazer!!!"
+	    #yamato_cannon(period)
+
+	    # Channel Analysis
+	    fft_data = self.tb.fft_sample()
+	    channel1=sum(fft_data[0:511])
+	    channel1=abs(channel1)
+	    channel2=sum(fft_data[512:1024])
+	    channel2=abs(channel2)
+	    print "Channel 1 Energy: %.4f | Channel 2 Energy %.4f" % (channel1, channel2)
+
+
+	    print "Waiting %d second(s) before sensing again" % delay
             time.sleep(delay)
-            #if delay < 0.050:
-            	#delay = delay * 2       # exponential back-off
 
 
 
