@@ -133,13 +133,10 @@ class cs_mac(object):
         while 1:
             delay = min_delay
             #channel = self.tb.carrier_sensed()
-            power = self.tb.spectrum_power()
+            #power = self.tb.spectrum_power()
 	    #print "Channel selected %d: " % channel
-	    print "Spectrum Power: %d dB" % power
+	    #print "Spectrum Power: %d dB" % power
 	    
-	    # Start Transmitting for certain period of time
-	    #print "Ima firing my lazer!!!"
-	    #yamato_cannon(period)
 
 	    # Channel Analysis
 	    fft_data = self.tb.fft_sample()
@@ -148,6 +145,22 @@ class cs_mac(object):
 	    channel2=sum(fft_data[512:1024])
 	    channel2=abs(channel2)
 	    print "Channel 1 Energy: %.4f | Channel 2 Energy %.4f" % (channel1, channel2)
+		
+	    # Start Transmitting for certain period of time
+	    #print "Ima firing my lazer!!!"
+
+	    # Set Channel Carrier Frequency
+	    main = 2.4e9 # PLEASE SET EVERYTIME
+	    if channel1>channel2:
+		channel=main+0.75e6 # Middle of upper band
+	    else:
+		channel=main-0.75e6 # Middle of lower band
+	    print "Changing Carrier to: %d Hz" % channel
+	    self.tb.set_freq(channel)
+
+	    #yamato_cannon(period,channel)
+
+	   
 
 
 	    print "Waiting %d second(s) before sensing again" % delay
