@@ -123,11 +123,10 @@ class cs_mac(object):
         @param ok: bool indicating whether payload CRC was OK
         @param payload: contents of the packet (string)
         """
-        #if self.verbose:
-        #    print "Rx: ok = %r  len(payload) = %4d" % (ok, len(payload))
-        #if ok:
-        #    os.write(self.tun_fd, payload)
-
+        if self.verbose:
+            print "Rx: ok = %r  len(payload) = %4d" % (ok, len(payload))
+        if ok:
+		'Yay'
 	
 
 
@@ -149,11 +148,9 @@ class cs_mac(object):
 	print '##############################'
         
 	while 1:
-            delay = min_delay
-            #channel = self.tb.carrier_sensed()
-            #power = self.tb.spectrum_power()
-	    #print "Channel selected %d: " % channel
-	    #print "Spectrum Power: %d dB" % power
+	    # Tell Transmitter Not to Run
+	    self.tb.send_pkt(eof=True)            
+	    delay = min_delay
 	    
 	    # Set Receiver Freq
 	    self.tb.set_freq_R(main)
@@ -168,32 +165,16 @@ class cs_mac(object):
 	    print "Channel 1 Energy: %.4f | Channel 2 Energy %.4f" % (channel1, channel2)
 		
 	    # Set Channel Carrier Frequency
-	    offset = 1.75e6
+	    offset = 0.75e6
 	    if channel1>channel2:
 		channel=main+offset # Middle of upper band
 	    else:
 		channel=main-offset # Middle of lower band
-	    print "Changing Carrier to: %d Hz" % channel
-	    self.tb.set_freq(channel)
-	    print "New Carrier Frequency: %d Hz" % self.tb.get_center_freq()
+	    print "Changing Receiver to: %d Hz" % channel
+	    self.tb.set_freq_R(channel)
+	    print "New Receiver Frequency: %d Hz" % self.tb.get_center_freq()
 
-
-	    # Start Transmitting for certain period of time
-	    print "Ima firin my lazer!!!"
-
-	    # Start Timer
-	    start = time.time()
-	    packet = 'lawlz'
-	    period = 1 # seconds
-	    pkt_num = 0
-	    while (time.time() - start) < period:
-		pkt_num+=1
-		self.tb.send_pkt(packet)	
-
-	    print "Packet(s) Sent: %d" % pkt_num 
-    	    #print "Queue size: ", self.tb.get_send_queue_size()
-	    print "Waiting %d second(s) before sensing again" % delay
-           
+	    print "Waiting %d second(s) before sensing again" % delay 
 	    time.sleep(delay)
 
 

@@ -65,7 +65,9 @@ class transmit_path(gr.hier_block2):
         return self._bitrate
 
     def get_send_queue_size(self):
-        return self.packet_transmittter._pkt_input.size()
+	#help(self.packet_transmitter._pkt_input)
+        #help(self.packet_transmitter._pkt_input.msgq)
+        return self.packet_transmitter._pkt_input.msgq.count()
 
     def samples_per_symbol(self):
         return self.modulator._samples_per_symbol

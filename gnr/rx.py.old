@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+#
 
 
 from gnuradio import gr, digital
@@ -15,7 +16,6 @@ from uhd_interface import uhd_receiver
 import os, sys
 import random, time, struct
 
-    
 
 # ////////////////////////////////////////////////////////////////////
 #                     the flow graph
@@ -54,26 +54,11 @@ class my_top_block(gr.top_block):
     def send_pkt(self, payload='', eof=False):
         return self.txpath.send_pkt(payload, eof)
 
-    def get_send_queue_size(self):
-        return self.txpath.get_send_queue_size()
- 
     def carrier_sensed(self):
         """
         Return True if the receive path thinks there's carrier
         """
         return self.rxpath.carrier_sensed()
-
-    def spectrum_power(self):
-        """
-        Return True if the receive path thinks there's carrier
-        """
-        return self.rxpath.spectrum_power()
-
-    def fft_sample(self):
-        """
-        Return True if the receive path thinks there's carrier
-        """
-        return self.rxpath.fft_sample()
 
     def set_freq(self, target_freq):
         """
@@ -82,18 +67,6 @@ class my_top_block(gr.top_block):
 
         self.sink.set_freq(target_freq)
         self.source.set_freq(target_freq)
-        
-    def set_freq_R(self, target_freq):#Receiver
-        """
-        Set the center frequency we're interested in.
-        """
-        self.source.set_freq(target_freq)
-
-    def get_center_freq(self):#Transmitter
-        """
-        Get the center frequency we're interested in.
-        """
-	return self.sink.get_center_freq()
         
 
 # ////////////////////////////////////////////////////////////////////
@@ -105,11 +78,7 @@ class cs_mac(object):
     Prototype carrier sense MAC
     """
 
-	#####################################
-	# Accessories
-	#####################################
-
-    def __init__(self, verbose=False):
+    def __init__(self, tun_fd, verbose=False):
         self.verbose = verbose
         self.tb = None             # top block (access to PHY)
 
@@ -123,79 +92,33 @@ class cs_mac(object):
         @param ok: bool indicating whether payload CRC was OK
         @param payload: contents of the packet (string)
         """
-        #if self.verbose:
-        #    print "Rx: ok = %r  len(payload) = %4d" % (ok, len(payload))
-        #if ok:
-        #    os.write(self.tun_fd, payload)
+        if self.verbose:
+            print "Rx: ok = %r  len(payload) = %4d" % (ok, len(payload))
+        if ok:
+            os.write(self.tun_fd, payload)
 
-	
-
-
-	#####################################
-	# MAIN MAC LOOP, where all the magic happens
-	#####################################
-
-
-    def main_loop(self, rx_freq):
+    def main_loop(self):
         """
-        Main loop for MAC.
-
         """
-        min_delay = 1               # seconds
-	main = rx_freq
-	
-	print '##############################'
-	print 'Starting Control Mechanism'
-	print '##############################'
-        
-	while 1:
+        min_delay = 0.001               # seconds
+
+        while 1:
+            payload = os.read(self.tun_fd, 10*1024)
+            if not payload:
+                self.tb.send_pkt(eof=True)
+                break
+
+            if self.verbose:
+                print "Tx: len(payload) = %4d" % (len(payload),)
+
             delay = min_delay
-            #channel = self.tb.carrier_sensed()
-            #power = self.tb.spectrum_power()
-	    #print "Channel selected %d: " % channel
-	    #print "Spectrum Power: %d dB" % power
-	    
-	    # Set Receiver Freq
-	    self.tb.set_freq_R(main)
+            while self.tb.carrier_sensed():
+                sys.stderr.write('B')
+                time.sleep(delay)
+                if delay < 0.050:
+                    delay = delay * 2       # exponential back-off
 
-	    # Channel Analysis
-	    fft_data = self.tb.fft_sample()
-	    channel1=sum(fft_data[0:511])
-	    channel1=abs(channel1)
-	    channel2=sum(fft_data[512:1024])
-	    channel2=abs(channel2)
-	    
-	    print "Channel 1 Energy: %.4f | Channel 2 Energy %.4f" % (channel1, channel2)
-		
-	    # Set Channel Carrier Frequency
-	    offset = 1.75e6
-	    if channel1>channel2:
-		channel=main+offset # Middle of upper band
-	    else:
-		channel=main-offset # Middle of lower band
-	    print "Changing Carrier to: %d Hz" % channel
-	    self.tb.set_freq(channel)
-	    print "New Carrier Frequency: %d Hz" % self.tb.get_center_freq()
-
-
-	    # Start Transmitting for certain period of time
-	    print "Ima firin my lazer!!!"
-
-	    # Start Timer
-	    start = time.time()
-	    packet = 'lawlz'
-	    period = 1 # seconds
-	    pkt_num = 0
-	    while (time.time() - start) < period:
-		pkt_num+=1
-		self.tb.send_pkt(packet)	
-
-	    print "Packet(s) Sent: %d" % pkt_num 
-    	    #print "Queue size: ", self.tb.get_send_queue_size()
-	    print "Waiting %d second(s) before sensing again" % delay
-           
-	    time.sleep(delay)
-
+            self.tb.send_pkt(payload)
 
 
 # /////////////////////////////////////////////////////////////////////////////
@@ -219,8 +142,8 @@ def main():
     parser.add_option("-v","--verbose", action="store_true", default=False)
     expert_grp.add_option("-c", "--carrier-threshold", type="eng_float", default=30,
                           help="set carrier detect threshold (dB) [default=%default]")
-    #expert_grp.add_option("","--tun-device-filename", default="/dev/net/tun",
-    #                      help="path to tun device file [default=%default]")
+    expert_grp.add_option("","--tun-device-filename", default="/dev/net/tun",
+                          help="path to tun device file [default=%default]")
 
     transmit_path.add_options(parser, expert_grp)
     receive_path.add_options(parser, expert_grp)
@@ -238,6 +161,8 @@ def main():
         parser.print_help(sys.stderr)
         sys.exit(1)
 
+    # open the TUN/TAP interface
+    (tun_fd, tun_ifname) = open_tun_interface(options.tun_device_filename)
 
     # Attempt to enable realtime scheduling
     r = gr.enable_realtime_scheduling()
@@ -247,16 +172,16 @@ def main():
         realtime = False
         print "Note: failed to enable realtime scheduling"
 
-    # instantiate (create object) the MAC
-    mac = cs_mac(verbose=True)
+    # instantiate the MAC
+    mac = cs_mac(tun_fd, verbose=True)
 
-    # build the flow-graph (PHY)
+    # build the graph (PHY)
     tb = my_top_block(mods[options.modulation],
                       demods[options.modulation],
                       mac.phy_rx_callback,
                       options)
 
-    mac.set_top_block(tb)    # give the MAC a handle to control the PHY
+    mac.set_top_block(tb)    # give the MAC a handle for the PHY
 
     if tb.txpath.bitrate() != tb.rxpath.bitrate():
         print "WARNING: Transmit bitrate = %sb/sec, Receive bitrate = %sb/sec" % (
@@ -270,10 +195,20 @@ def main():
 
     tb.rxpath.set_carrier_threshold(options.carrier_threshold)
     print "Carrier sense threshold:", options.carrier_threshold, "dB"
+    
+    print
+    print "Allocated virtual ethernet interface: %s" % (tun_ifname,)
+    print "You must now use ifconfig to set its IP address. E.g.,"
+    print
+    print "  $ sudo ifconfig %s 192.168.200.1" % (tun_ifname,)
+    print
+    print "Be sure to use a different address in the same subnet for each machine."
+    print
+
 
     tb.start()    # Start executing the flow graph (runs in separate threads)
 
-    mac.main_loop(options.tx_freq)    # don't expect this to return...
+    mac.main_loop()    # don't expect this to return...
 
     tb.stop()     # but if it does, tell flow graph to stop.
     tb.wait()     # wait for it to finish
