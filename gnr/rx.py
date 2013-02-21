@@ -124,7 +124,8 @@ class cs_mac(object):
         @param payload: contents of the packet (string)
         """
         if self.verbose:
-            print "Rx: ok = %r  len(payload) = %4d" % (ok, len(payload))
+	    ''
+            #print "Rx: ok = %r  len(payload) = %4d" % (ok, len(payload))
         if ok:
 		'Yay'
 	
@@ -159,7 +160,7 @@ class cs_mac(object):
 	    fft_data = self.tb.fft_sample()
 	    channel1=sum(fft_data[0:511])
 	    channel1=abs(channel1)
-	    channel2=sum(fft_data[512:1024])
+	    channel2=sum(fft_data[512:1023])
 	    channel2=abs(channel2)
 	    
 	    print "Channel 1 Energy: %.4f | Channel 2 Energy %.4f" % (channel1, channel2)

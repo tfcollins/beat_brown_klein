@@ -159,19 +159,22 @@ class cs_mac(object):
 	    self.tb.set_freq_R(main)
 
 	    # Channel Analysis
-	    fft_data = self.tb.fft_sample()
-	    channel1=sum(fft_data[0:511])
-	    channel1=abs(channel1)
-	    channel2=sum(fft_data[512:1024])
-	    channel2=abs(channel2)
+	    #fft_data = self.tb.fft_sample()
+	    #channel1=sum(fft_data[0:511])
+	    #channel1=abs(channel1)
+	    #channel2=sum(fft_data[512:1024])
+	    #channel2=abs(channel2)
 	    
-	    print "Channel 1 Energy: %.4f | Channel 2 Energy %.4f" % (channel1, channel2)
+	    #print "Channel 1 Energy: %.4f | Channel 2 Energy %.4f" % (channel1, channel2)
 		
 	    # Set Channel Carrier Frequency
-	    offset = 1.75e6
-	    if channel1>channel2:
+	    offset = 0.75e6
+	    #if channel1>channel2:
+	    if 1:
+		print "USING CHANNEL 2"
 		channel=main+offset # Middle of upper band
 	    else:
+		print "USING CHANNEL 1"
 		channel=main-offset # Middle of lower band
 	    print "Changing Carrier to: %d Hz" % channel
 	    self.tb.set_freq(channel)
@@ -184,7 +187,7 @@ class cs_mac(object):
 	    # Start Timer
 	    start = time.time()
 	    packet = 'lawlz'
-	    period = 1 # seconds
+	    period = 5 # seconds
 	    pkt_num = 0
 	    while (time.time() - start) < period:
 		pkt_num+=1

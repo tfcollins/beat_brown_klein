@@ -74,10 +74,10 @@ class receive_path(gr.hier_block2):
 
 
 	# More Carrier Sensing with FFT
-	self.gr_vector_sink = gr.vector_sink_c(1024)
-	self.gr_stream_to_vector = gr.stream_to_vector(gr.sizeof_gr_complex*1, 1024)
-	self.gr_head = gr.head(gr.sizeof_gr_complex*1024, 1024)
-	self.fft = fft.fft_vcc(1024, True, (window.blackmanharris(1024)), True, 1)
+	#self.gr_vector_sink = gr.vector_sink_c(1024)
+	#self.gr_stream_to_vector = gr.stream_to_vector(gr.sizeof_gr_complex*1, 1024)
+	#self.gr_head = gr.head(gr.sizeof_gr_complex*1024, 1024)
+	#self.fft = fft.fft_vcc(1024, True, (window.blackmanharris(1024)), True, 1)
 
 	######################################################
 	# Connect Blocks Together
@@ -87,7 +87,7 @@ class receive_path(gr.hier_block2):
 	#
 
 	# connect FFT sampler to system
-	self.connect(self, self.gr_stream_to_vector, self.fft, self.gr_vector_sink)
+	#self.connect(self, self.gr_stream_to_vector, self.fft, self.gr_vector_sink)
 
 	# connect block input to channel filter
 	self.connect(self, self.channel_filter)
