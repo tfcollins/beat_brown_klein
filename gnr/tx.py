@@ -15,7 +15,7 @@ from uhd_interface import uhd_receiver
 import os, sys
 import random, time, struct
 
-    
+import numpy    
 
 # ////////////////////////////////////////////////////////////////////
 #                     the flow graph
@@ -47,7 +47,7 @@ class my_top_block(gr.top_block):
         options.samples_per_symbol = self.source._sps
 
         self.txpath = transmit_path(mod_class, options)
-        self.rxpath = receive_path(demod_class, rx_callback, options)
+        self.rxpath = receive_path(demod_class, rx_callback, options, self.source)
         self.connect(self.txpath, self.sink)
         self.connect(self.source, self.rxpath)
 
@@ -65,13 +65,13 @@ class my_top_block(gr.top_block):
 
     def spectrum_power(self):
         """
-        Return True if the receive path thinks there's carrier
+        Return Probe data from 
         """
         return self.rxpath.spectrum_power()
 
     def fft_sample(self):
         """
-        Return True if the receive path thinks there's carrier
+        Return Data from FFT Sink
         """
         return self.rxpath.fft_sample()
 
@@ -85,7 +85,7 @@ class my_top_block(gr.top_block):
         
     def set_freq_R(self, target_freq):#Receiver
         """
-        Set the center frequency we're interested in.
+        Set the center frequency of receiver we're interested in.
         """
         self.source.set_freq(target_freq)
 
@@ -95,6 +95,51 @@ class my_top_block(gr.top_block):
         """
 	return self.sink.get_center_freq()
         
+    def ss_msgq(self):#Spectrum Sensing Data
+	return self.rxpath.msgq
+
+# SS Message Parser
+
+class parse_msg(object):
+    def __init__(self, msg):
+        self.center_freq = msg.arg1()
+        self.vlen = int(msg.arg2())
+        assert(msg.length() == self.vlen * gr.sizeof_float)
+
+        # FIXME consider using NumPy array
+        t = msg.to_string()
+        self.raw_data = t
+        self.data = struct.unpack('%df' % (self.vlen,), t)
+
+
+#Sense spectrum
+def sense_spectrum(tb):
+	
+	queue = tb.rxpath.msgq
+
+	#Clear Queue for fresh data
+	queue.flush()
+
+
+
+	#Wait for message for channel 1
+	# Get the next message sent from the C++ code (blocking call).
+	# It contains the center frequency and the mag squared of the fft
+	c1 = parse_msg(queue.delete_head())
+
+	# Print center freq so we know that something is happening...
+	#print "Channel 1: ", c1.center_freq
+	#print c1.data
+
+	c2 = parse_msg(queue.delete_head())
+
+	# Print center freq so we know that something is happening...
+	#print "Channel 2:", c2.center_freq
+	#print c2.data
+
+	return {'c1':c1, 'c2':c2}
+
+
 
 # ////////////////////////////////////////////////////////////////////
 #                           Carrier Sense MAC
@@ -155,17 +200,23 @@ class cs_mac(object):
 	    #print "Channel selected %d: " % channel
 	    #print "Spectrum Power: %d dB" % power
 	    
-	    # Set Receiver Freq
-	    self.tb.set_freq_R(main)
+	    # Sense Spectrum
+	    channel_info = sense_spectrum(self.tb)
+	    print "Channel 1: ",channel_info['c1'].center_freq
+	    print "Channel 2: ",channel_info['c2'].center_freq
+
 
 	    # Channel Analysis
-	    #fft_data = self.tb.fft_sample()
-	    #channel1=sum(fft_data[0:511])
-	    #channel1=abs(channel1)
-	    #channel2=sum(fft_data[512:1024])
-	    #channel2=abs(channel2)
+	    channel1=numpy.asarray(channel_info['c1'].data)
+	    channel2=numpy.asarray(channel_info['c2'].data)
+
+	    channel1ac=autocorr(channel1)
+	    channel2ac=autocorr(channel2)
 	    
-	    #print "Channel 1 Energy: %.4f | Channel 2 Energy %.4f" % (channel1, channel2)
+	    channel1=channel1ac.mean()
+	    channel2=channel2ac.mean()
+ 
+	    print "Channel 1 Energy: ", channel1, " | Channel 2 Energy: ", channel2
 		
 	    # Set Channel Carrier Frequency
 	    offset = 0.75e6
@@ -199,7 +250,9 @@ class cs_mac(object):
            
 	    time.sleep(delay)
 
-
+def autocorr(x):
+    result = numpy.correlate(x, x, mode='full')
+    return result[result.size/2:]
 
 # /////////////////////////////////////////////////////////////////////////////
 #                                   main

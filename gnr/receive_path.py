@@ -8,13 +8,62 @@ from gnuradio import window
 
 import copy
 import sys
+import math
+
 
 # /////////////////////////////////////////////////////////////////////////////
 #                              receive path
 # /////////////////////////////////////////////////////////////////////////////
 
+class tune(gr.feval_dd):
+    """
+    This class allows C++ code to callback into python.
+    """
+    def __init__(self, tb):
+        gr.feval_dd.__init__(self)
+        self.tb = tb
+
+    def eval(self, ignore):
+        """
+        This method is called from gr.bin_statistics_f when it wants
+        to change the center frequency.  This method tunes the front
+        end to the new center frequency, and returns the new frequency
+        as its result.
+        """
+
+        try:
+            # We use this try block so that if something goes wrong
+            # from here down, at least we'll have a prayer of knowing
+            # what went wrong.  Without this, you get a very
+            # mysterious:
+            #
+            #   terminate called after throwing an instance of
+            #   'Swig::DirectorMethodException' Aborted
+            #
+            # message on stderr.  Not exactly helpful ;)
+
+            new_freq = self.tb.set_next_freq()
+            return new_freq
+
+        except Exception, e:
+            print "tune: Exception: ", e
+
+
+class parse_msg(object):
+    def __init__(self, msg):
+        self.center_freq = msg.arg1()
+        self.vlen = int(msg.arg2())
+        assert(msg.length() == self.vlen * gr.sizeof_float)
+
+        # FIXME consider using NumPy array
+        t = msg.to_string()
+        self.raw_data = t
+        self.data = struct.unpack('%df' % (self.vlen,), t)
+
+
+
 class receive_path(gr.hier_block2):
-    def __init__(self, demod_class, rx_callback, options):
+    def __init__(self, demod_class, rx_callback, options, source_block):
 	gr.hier_block2.__init__(self, "receive_path",
 				gr.io_signature(1, 1, gr.sizeof_gr_complex),
 				gr.io_signature(0, 0, 0))
@@ -33,6 +82,9 @@ class receive_path(gr.hier_block2):
 
         # Get demod_kwargs
         demod_kwargs = self._demod_class.extract_kwargs_from_options(options)
+
+	#Give hooks of usrp to blocks downstream
+	self.source_block = source_block
 
 	#########################################
 	# Build Blocks
@@ -79,6 +131,52 @@ class receive_path(gr.hier_block2):
 	#self.gr_head = gr.head(gr.sizeof_gr_complex*1024, 1024)
 	#self.fft = fft.fft_vcc(1024, True, (window.blackmanharris(1024)), True, 1)
 
+	# Parameters
+        usrp_rate = options.bitrate
+	self.fft_size = 1024
+	self.min_freq = 2.4e9-0.75e6
+        self.max_freq = 2.4e9+0.75e6
+	self.tune_delay = 0.001
+	self.dwell_delay = 0.01
+
+	s2v = gr.stream_to_vector(gr.sizeof_gr_complex, self.fft_size)
+
+        mywindow = window.blackmanharris(self.fft_size)
+        fft = gr.fft_vcc(self.fft_size, True, mywindow)
+        power = 0
+        for tap in mywindow:
+            power += tap*tap
+
+        c2mag = gr.complex_to_mag_squared(self.fft_size)
+
+        # FIXME the log10 primitive is dog slow
+        log = gr.nlog10_ff(10, self.fft_size,
+                           -20*math.log10(self.fft_size)-10*math.log10(power/self.fft_size))
+
+        # Set the freq_step to 75% of the actual data throughput.
+        # This allows us to discard the bins on both ends of the spectrum.
+        #self.freq_step = 0.75 * usrp_rate
+        #self.min_center_freq = self.min_freq + self.freq_step/2
+        #nsteps = math.ceil((self.max_freq - self.min_freq) / self.freq_step)
+        #self.max_center_freq = self.min_center_freq + (nsteps * self.freq_step)
+
+	self.freq_step = 1.5e6
+        self.min_center_freq = self.min_freq
+        nsteps = 1
+        self.max_center_freq = self.max_freq
+
+        self.next_freq = self.min_center_freq
+
+        tune_delay  = max(0, int(round(self.tune_delay * usrp_rate / self.fft_size)))  # in fft_frames
+        dwell_delay = max(1, int(round(self.dwell_delay * usrp_rate / self.fft_size))) # in fft_frames
+
+        self.msgq = gr.msg_queue(16)
+        self._tune_callback = tune(self)        # hang on to this to keep it from being GC'd
+        stats = gr.bin_statistics_f(self.fft_size, self.msgq,
+                                    self._tune_callback, tune_delay,
+                                    dwell_delay)
+
+
 	######################################################
 	# Connect Blocks Together
 	######################################################
@@ -98,9 +196,27 @@ class receive_path(gr.hier_block2):
         # connect channel filter to the packet receiver
         self.connect(self.channel_filter, self.packet_receiver)
 
+	# FIXME leave out the log10 until we speed it up
+        #self.connect(self.u, s2v, fft, c2mag, log, stats)
+        self.connect(self.channel_filter, s2v, fft, c2mag, stats)
+
 	######################################################
-	# Info Methods
+	# Info and Action Methods
 	######################################################
+
+    #def ss_queue(self):
+    #	return self.msgq
+
+    def set_freq_R(self, target_freq):#Receiver
+        """
+        Set the center frequency of receiver we're interested in.
+        """
+        #print "Target: " + str(target_freq)
+	r = self.source_block.set_freq(target_freq)
+        if r:
+            return True
+
+        return False
 
     def bitrate(self):
         return self._bitrate
@@ -177,3 +293,20 @@ class receive_path(gr.hier_block2):
         print "bitrate:         %sb/s" % (eng_notation.num_to_str(self._bitrate))
         print "samples/symbol:  %.4f"    % (self.samples_per_symbol())
         print "Differential:    %s"    % (self.differential())
+
+
+
+    def set_next_freq(self):
+        target_freq = self.next_freq
+        self.next_freq = self.next_freq + self.freq_step
+        if self.next_freq > self.max_center_freq:
+            self.next_freq = self.min_center_freq
+
+        if not self.set_freq_R(target_freq):
+            print "Failed to set frequency to", target_freq
+            sys.exit(1)
+
+        return target_freq
+
+
+
